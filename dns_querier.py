@@ -39,34 +39,3 @@ s.sendto(bytes(packet), ("1.1.1.1",53))
 d = s.recvfrom(1024)[0]
 
 print(d)
-
-'''
-from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
-from socket import inet_ntoa
-import json
-import requests
-
-def get_req(nodeIP, endpoint):
-    return json.loads(requests.get("http://"+nodeIP+endpoint).content)
-
-class MyListener(ServiceListener):
-
-    def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
-        print(f"Service {name} updated")
-
-    def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
-        print(f"Service {name} removed")
-
-    def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
-        info = zc.get_service_info(type_, name)
-        print(get_req(inet_ntoa(info.addresses[0]), "/x-nmos/node/v1.3/self"))
-
-
-zeroconf = Zeroconf()
-listener = MyListener()
-browser = ServiceBrowser(zeroconf, "_nmos-node._tcp.local.", listener)
-try:
-    input("Press enter to exit...\n\n")
-finally:
-    zeroconf.close()
-    '''
