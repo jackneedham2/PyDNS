@@ -1,8 +1,9 @@
 import socket
+from helper_functions import *
 
 class DNSQuerier:
     header = [
-        0,0, # Transaction ID
+        255,255, # Transaction ID
         1,0, # Flags
         0,1, # Num questions
         0,0, # Num Answer RRs
@@ -38,7 +39,43 @@ class DNSQuerier:
         d = s.recvfrom(1024)
         return d
 
-
-
 my_querier = DNSQuerier()
-print(my_querier.query_domain("google.com","1.1.1.1",53))
+r = my_querier.query_domain("google.com","216.239.32.10",53)[0]
+
+# These definitions all taken from rfc1035
+
+opcode_map = ["QUERY", "IQUERY", "STATUS"]
+rcode_map = ["No Error", "Format Error", "Server Failure", "Name Error", "Not Implemented", "Refused"]
+
+flags = {
+    "QR": r[2] >> 7,
+    "OPCODE": opcode_map[(r[2] & 0b01111000) >> 3],
+    "AA": bool((r[2] & 0b00000100) >> 2),
+    "TC": bool((r[2] & 0b00000010) >> 1),
+    "RD": bool(r[2] & 0b00000001),
+    "RA": bool((r[3] & 0b10000000) >> 7),
+    "Z": (r[3] & 0b01110000) >> 4,
+    "RCODE": rcode_map[r[3] & 0b00001111]
+
+}
+
+print(my_querier.format_domain("google.com"))
+
+parsed_question = {
+    r[12:28]
+}
+
+resp = {
+    "TransactionID": r[0:2],
+    "Flags": flags,
+    "# Questions": (r[4]<<8)+r[5],
+    "# Answer RRs": (r[6]<<8)+r[7],
+    "# Authority RRs": (r[8]<<8)+r[9],
+    "# Additional RRs": (r[10]<<8)+r[11],
+    "Question": parsed_question
+}  
+
+
+print(resp)
+
+
