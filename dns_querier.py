@@ -1,5 +1,7 @@
 import socket
+import pprint
 from helper_functions import *
+from definition_maps import *
 
 class DNSQuerier:
     header = [
@@ -20,16 +22,15 @@ class DNSQuerier:
             outbytes += [len(section)]
             for c in section:
                 outbytes += [ord(c)]
+        outbytes += [0] # null octet for the root
         return outbytes
 
     def create_query_packet(self, d):
         packet = []
         packet += self.header
-        packet += self.format_domain(d)
-        packet += [0,0]
-        packet += [1, 0] # Type: PTR Record
-        packet += [1, 0] # QCLASS = IN
-        packet += [0x80, 0x1]
+        packet += self.format_domain(d) # add question
+        packet += [0, qtype_map_inv["A"]] # add QTYPE
+        packet += [0, qclass_map_inv["IN"]] # add QCLASS
         return packet
 
     def query_domain(self,d, ip, port):
@@ -39,13 +40,25 @@ class DNSQuerier:
         d = s.recvfrom(1024)
         return d
 
+
+def parse_domain(d):
+    p = d[0]
+    i = 1
+    outstr = ""
+    while d[i] != 0:
+        if p == 0:
+            outstr += "."
+            p = d[i]
+        else:
+            outstr += chr(d[i])
+            p -= 1
+        i += 1
+    return (i, outstr)
+
 my_querier = DNSQuerier()
 r = my_querier.query_domain("google.com","216.239.32.10",53)[0]
 
-# These definitions all taken from rfc1035
 
-opcode_map = ["QUERY", "IQUERY", "STATUS"]
-rcode_map = ["No Error", "Format Error", "Server Failure", "Name Error", "Not Implemented", "Refused"]
 
 flags = {
     "QR": r[2] >> 7,
@@ -59,11 +72,15 @@ flags = {
 
 }
 
-print(my_querier.format_domain("google.com"))
+parsed_question = parse_domain(r[12:-1])
 
-parsed_question = {
-    r[12:28]
-}
+
+type_offset = 12+parsed_question[0]+1
+#print()
+#print(r[12+39+2:12+39+2+2])
+#nbo_to_int(r[type_offset:type_offset+2])
+
+print()
 
 resp = {
     "TransactionID": r[0:2],
@@ -72,10 +89,20 @@ resp = {
     "# Answer RRs": (r[6]<<8)+r[7],
     "# Authority RRs": (r[8]<<8)+r[9],
     "# Additional RRs": (r[10]<<8)+r[11],
-    "Question": parsed_question
+    "Question": parsed_question[1],
+    "QType": qtype_map[int.from_bytes(r[type_offset:type_offset+2], "big")],
+    "QClass": qclass_map[int.from_bytes(r[type_offset+2:type_offset+4], "big")]
 }  
 
+rr_offset = type_offset+4
 
-print(resp)
+#print(r[rr_offset:-1])
+
+if(r[rr_offset] & 192 == 192): # 192 = 0b11000000
+    domain_pointer = int.from_bytes([(r[rr_offset] & 63), r[rr_offset+1]], "big")
+    parsed_dom = parse_domain(r[domain_pointer:-1])
+    rr_offset = parsed_dom[0]
+
+#pprint.pp(resp)
 
 

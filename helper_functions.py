@@ -8,3 +8,6 @@ def print_binary(hex_val):
             out_str += "0"
         check = check / 2
     print(out_str)
+
+def nbo_to_int(b):
+    return (b[0] << 8)+b[1]
