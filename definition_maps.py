@@ -47,3 +47,8 @@ qclass_map = {
 
 qtype_map_inv = {v: k for k, v in qtype_map.items()}
 qclass_map_inv = {v: k for k, v in qclass_map.items()}
+
+type_formats_map = {
+    "domain": ["CNAME","MB","MD","MF", "MG", "MINFO","MR"],
+    "other": ["HINFO"]
+}
