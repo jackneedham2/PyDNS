@@ -29,7 +29,7 @@ class DNSQuerier:
         packet = []
         packet += self.header
         packet += self.format_domain(d) # add question
-        packet += [0, qtype_map_inv["A"]] # add QTYPE
+        packet += [0, qtype_map_inv["PTR"]] # add QTYPE
         packet += [0, qclass_map_inv["IN"]] # add QCLASS
         return packet
 
@@ -56,8 +56,7 @@ def parse_domain(d):
     return (i, outstr)
 
 my_querier = DNSQuerier()
-r = my_querier.query_domain("google.com","216.239.32.10",53)[0]
-
+r = my_querier.query_domain("1.1.1.1.in-addr.arpa","1.1.1.1",53)[0]
 
 
 flags = {
@@ -94,30 +93,39 @@ resp = {
     "QClass": qclass_map[int.from_bytes(r[type_offset+2:type_offset+4])]
 }  
 
+
+
+
 rr_offset = type_offset+4
+i = 0
 
-if(r[rr_offset] & 192 == 192): # 192 = 0b11000000
-    record = dict()
-    domain_pointer = int.from_bytes([(r[rr_offset] & 63), r[rr_offset+1]])
-    parsed_dom = parse_domain(r[domain_pointer:-1])
-    record["Domain"] = parsed_dom[1]
-    rr_offset += 2
+resp["Answers"] = []
+while i < resp["# Answer RRs"]:
+    if(r[rr_offset] & 192 == 192): # 192 = 0b11000000
+        record = dict()
+        domain_pointer = int.from_bytes([(r[rr_offset] & 63), r[rr_offset+1]])
+        parsed_dom = parse_domain(r[domain_pointer:-1])
+        record["Domain"] = parsed_dom[1]
+        rr_offset += 2
+        record["Type"] = (qtype_map[int.from_bytes(r[rr_offset:rr_offset+2])])
+        record["Class"] = (qclass_map[int.from_bytes(r[rr_offset+2:rr_offset+4])])
+        record["TTL"] = int.from_bytes(r[rr_offset+4:rr_offset+8])
+        record["Data Length"] = int.from_bytes(r[rr_offset+8:rr_offset+10])
+        if record["Type"] == "A":
+            data_raw = r[rr_offset+10:rr_offset+10+record["Data Length"]]
+            outstr = ""
+            for b in data_raw[0:-1]:
+                outstr += str(b)
+                outstr += "."
+            outstr += str(data_raw[-1])
+            record["Data"] = outstr
+        else:
+            record["Data"] = r[rr_offset+10:rr_offset+10+record["Data Length"]]
+        rr_offset = rr_offset+10+record["Data Length"]
+        resp["Answers"] += [record]
+        i += 1
 
-    record["Type"] = (qtype_map[int.from_bytes(r[rr_offset:rr_offset+2])])
-    record["Class"] = (qclass_map[int.from_bytes(r[rr_offset+2:rr_offset+4])])
-    record["TTL"] = int.from_bytes(r[rr_offset+4:rr_offset+8])
-    record["Data Length"] = int.from_bytes(r[rr_offset+8:rr_offset+10])
-    if record["Type"] == "A":
-        data_raw = r[rr_offset+10:rr_offset+10+record["Data Length"]]
-        outstr = ""
-        for b in data_raw[0:-1]:
-            outstr += str(b)
-            outstr += "."
-        outstr += str(data_raw[-1])
-        record["Data"] = outstr
-    else:
-        record["Data"] = r[rr_offset+10:rr_offset+10+record["Data Length"]]
-    print(record)
+pprint.pp(resp)
 
 
 #pprint.pp(resp)
