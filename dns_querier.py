@@ -90,18 +90,35 @@ resp = {
     "# Authority RRs": (r[8]<<8)+r[9],
     "# Additional RRs": (r[10]<<8)+r[11],
     "Question": parsed_question[1],
-    "QType": qtype_map[int.from_bytes(r[type_offset:type_offset+2], "big")],
-    "QClass": qclass_map[int.from_bytes(r[type_offset+2:type_offset+4], "big")]
+    "QType": qtype_map[int.from_bytes(r[type_offset:type_offset+2])],
+    "QClass": qclass_map[int.from_bytes(r[type_offset+2:type_offset+4])]
 }  
 
 rr_offset = type_offset+4
 
-#print(r[rr_offset:-1])
-
 if(r[rr_offset] & 192 == 192): # 192 = 0b11000000
-    domain_pointer = int.from_bytes([(r[rr_offset] & 63), r[rr_offset+1]], "big")
+    record = dict()
+    domain_pointer = int.from_bytes([(r[rr_offset] & 63), r[rr_offset+1]])
     parsed_dom = parse_domain(r[domain_pointer:-1])
-    rr_offset = parsed_dom[0]
+    record["Domain"] = parsed_dom[1]
+    rr_offset += 2
+
+    record["Type"] = (qtype_map[int.from_bytes(r[rr_offset:rr_offset+2])])
+    record["Class"] = (qclass_map[int.from_bytes(r[rr_offset+2:rr_offset+4])])
+    record["TTL"] = int.from_bytes(r[rr_offset+4:rr_offset+8])
+    record["Data Length"] = int.from_bytes(r[rr_offset+8:rr_offset+10])
+    if record["Type"] == "A":
+        data_raw = r[rr_offset+10:rr_offset+10+record["Data Length"]]
+        outstr = ""
+        for b in data_raw[0:-1]:
+            outstr += str(b)
+            outstr += "."
+        outstr += str(data_raw[-1])
+        record["Data"] = outstr
+    else:
+        record["Data"] = r[rr_offset+10:rr_offset+10+record["Data Length"]]
+    print(record)
+
 
 #pprint.pp(resp)
 
