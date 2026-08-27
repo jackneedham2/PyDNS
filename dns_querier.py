@@ -4,8 +4,17 @@ from helper_functions import *
 from definition_maps import *
 
 dns_db = {
-    "google.com": "123.123.123.123"
+    "google.com": 
+    {
+        "Type": "Query",
+        "Class": "IN",
+        "TTL": 300,
+        "Data": "1.1.1.1",
+        "Data Length": 4 # 4 octets
+    }
 }
+
+
 
 def format_domain(s):
     spl = s.split(".")
@@ -27,7 +36,7 @@ def construct_query_packet(d,header,qtype):
 
 def construct_header(h):
     ch = [] # ch for constructed header
-    ch += [((h["ID"] & 65535) >> 8), (h["ID"] & 255)] # 16 bit ID
+    ch += [((h["Transaction ID"] & 65535) >> 8), (h["Transaction ID"] & 255)] # 16 bit ID
 
     # Create 16 bit flags section
     flags = [0, 0]
@@ -63,6 +72,17 @@ def construct_header(h):
 
     return ch
 
+def construct_rr(rr):
+    crr = []
+    crr += format_domain(rr["Domain"])
+    crr += [0, qtype_map_inv[rr["Type"]]]
+    crr += [0, qclass_map_inv[rr["Class"]]]
+    crr += [0,0,0,rr["TTL"]]
+    crr += [0, rr["Data Length"]]
+    crr += rr["Data"]
+    return crr
+
+
 def query_domain(d, ip, qtype="A", header=dict(), port=53):
 
     h = DEFAULT_QUERY_HEADER
@@ -95,7 +115,7 @@ def parse_query(q):
     q_offset = 12+parsed_question[0]+1
 
     resp = {
-        "TransactionID": q[0:2],
+        "Transaction ID": q[0:2],
         "Flags": {
             "QR": q[2] >> 7,
             "OPCODE": opcode_map[(q[2] & 0b01111000) >> 3],
@@ -171,20 +191,24 @@ def parse_response(r):
     return resp
 
 
-def send_response(query):
+def send_response(query): 
     parsedq = parse_query(query)
     parsedq["Answers"] = []
     for parsedq["Question"] in dns_db:
         record = dict()
         record["Domain"] = parsedq["Question"] # This needs to be the domain pointer. Fixed?
-        record["Type"] = dns_db[parsedq["Question"]["Type"]]
-        record["Class"] = dns_db[parsedq["Question"]["Class"]]
-        record["TTL"] = dns_db[parsedq["Question"]["TTL"]]
+        record["Type"] = dns_db[parsedq["Question"]]["Type"]
+        record["Class"] = dns_db[parsedq["Question"]]["Class"]
+        record["TTL"] = dns_db[parsedq["Question"]]["TTL"]
+        record["Data Length"] = dns_db[parsedq["Question"]]["Data Length"]
+        record["Data"] = dns_db[parsedq["Question"]]["Data"]
         parsedq["Answers"] += [record]
     print(parsedq)
 
+    construct_query_packet(parsedq["Question"], parsedq, parsedq["QType"])
 
-#send_response(bytes(construct_query_packet("google.com", DEFAULT_QUERY_HEADER,"A")))
+
+send_response(bytes(construct_query_packet("google.com", DEFAULT_QUERY_HEADER,"A")))
 
 
 '''

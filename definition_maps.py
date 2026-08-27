@@ -56,7 +56,7 @@ type_formats_map = {
 
 
 DEFAULT_QUERY_HEADER = {
-    "ID":255, 
+    "Transaction ID":255, 
     "QR":"Query", 
     "OPCODE":"QUERY",
     "AA": False,
