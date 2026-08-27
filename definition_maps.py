@@ -47,8 +47,26 @@ qclass_map = {
 
 qtype_map_inv = {v: k for k, v in qtype_map.items()}
 qclass_map_inv = {v: k for k, v in qclass_map.items()}
+rcode_map_inv = {v: k for k, v in rcode_map.items()}
 
 type_formats_map = {
     "domain": ["CNAME","MB","MD","MF", "MG", "MINFO","MR"],
     "other": ["HINFO"]
+}
+
+
+DEFAULT_QUERY_HEADER = {
+    "ID":255, 
+    "QR":"Query", 
+    "OPCODE":"QUERY",
+    "AA": False,
+    "TC": False,
+    "RD": True,
+    "RA": False,
+    "Z": 0,
+    "RCODE": "No Error",
+    "Num Questions": 1,
+    "Num Answer RRs": 0,
+    "Num Name Server RRs": 0,
+    "Num Additional RRs": 0
 }
