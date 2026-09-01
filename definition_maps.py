@@ -13,7 +13,6 @@ rcode_map = {
     4: "Not Implemented", 
     5: "Refused"
 }
-
 qtype_map = {
     1: "A",
     2: "NS",
@@ -36,7 +35,6 @@ qtype_map = {
     254: "MAILA",
     255: "*"
 }
-
 qclass_map = {
     1: "IN",
     2: "CS",
@@ -56,17 +54,19 @@ type_formats_map = {
 
 
 DEFAULT_QUERY_HEADER = {
-    "Transaction ID":255, 
-    "QR":"Query", 
-    "OPCODE":"QUERY",
-    "AA": False,
-    "TC": False,
-    "RD": True,
-    "RA": False,
-    "Z": 0,
-    "RCODE": "No Error",
+    "Transaction ID":21621,
+    "Flags": {
+        "QR":"Query", 
+        "OPCODE":"QUERY",
+        "AA": False,
+        "TC": False,
+        "RD": True,
+        "RA": False,
+        "Z": 0,
+        "RCODE": "No Error"
+    }, 
     "Num Questions": 1,
     "Num Answer RRs": 0,
-    "Num Name Server RRs": 0,
+    "Num Authority RRs": 0,
     "Num Additional RRs": 0
 }
