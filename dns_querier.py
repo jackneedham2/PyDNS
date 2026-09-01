@@ -11,6 +11,13 @@ dns_db = {
         "TTL": 300,
         "Data": "1.1.1.1",
         "Data Length": 4 # 4 octets
+    },
+    "yahoo.net": {
+        "Type": "A",
+        "Class": "IN",
+        "TTL": 300,
+        "Data": "13.248.158.7",
+        "Data Length": 4 # 4 octets
     }
 }
 
@@ -151,12 +158,16 @@ def parse_response(r):
             domain_pointer = int.from_bytes([(r[rr_offset] & 63), r[rr_offset+1]])
             parsed_dom = parse_domain(r[domain_pointer:-1])
             record["Domain"] = parsed_dom[1]
+            rr_offset += 2
+
         else:
-            record["Domain"] = parse_domain(r[rr_offset:-1])
-        
-        rr_offset += 2
-        record["Type"] = (qtype_map[int.from_bytes(r[rr_offset:rr_offset+2])])
-        record["Class"] = (qclass_map[int.from_bytes(r[rr_offset+2:rr_offset+4])])
+            d = parse_domain(r[rr_offset:-1])
+            record["Domain"] = d[1]
+            rr_offset += d[0]+1
+
+        print(r[rr_offset:rr_offset+6])
+        record["Type"] = qtype_map[int.from_bytes(r[rr_offset:rr_offset+2])]
+        record["Class"] = qclass_map[int.from_bytes(r[rr_offset+2:rr_offset+4])]
         record["TTL"] = int.from_bytes(r[rr_offset+4:rr_offset+8])
         record["Data Length"] = int.from_bytes(r[rr_offset+8:rr_offset+10])
         data_raw = r[rr_offset+10:rr_offset+10+record["Data Length"]]
@@ -196,15 +207,15 @@ def parse_response(r):
 def send_response(query): 
     parsedq = parse_query(query)
     parsedq["Answers"] = []
-    for parsedq["Question"] in dns_db:
-        record = dict()
-        record["Domain"] = parsedq["Question"] # This needs to be the domain pointer. Fixed?
-        record["Type"] = dns_db[parsedq["Question"]]["Type"]
-        record["Class"] = dns_db[parsedq["Question"]]["Class"]
-        record["TTL"] = dns_db[parsedq["Question"]]["TTL"]
-        record["Data Length"] = dns_db[parsedq["Question"]]["Data Length"]
-        record["Data"] = dns_db[parsedq["Question"]]["Data"]
-        parsedq["Answers"] += [record]
+
+    record = dict()
+    record["Domain"] = parsedq["Question"] # This needs to be the domain pointer. Fixed?
+    record["Type"] = dns_db[parsedq["Question"]]["Type"]
+    record["Class"] = dns_db[parsedq["Question"]]["Class"]
+    record["TTL"] = dns_db[parsedq["Question"]]["TTL"]
+    record["Data Length"] = dns_db[parsedq["Question"]]["Data Length"]
+    record["Data"] = dns_db[parsedq["Question"]]["Data"]
+    parsedq["Answers"] += [record]
     parsedq["Num Answer RRs"] = 1
     response_packet = bytes(construct_query_packet(parsedq["Question"], parsedq, parsedq["QType"]))
 
@@ -214,9 +225,10 @@ def send_response(query):
 
     for a in parsedq["Answers"]:
         response_packet += bytes(format_domain(a["Domain"]))
-        response_packet += struct.pack("<h", qtype_map_inv[a["Type"]])
-        response_packet += struct.pack("<I", a["TTL"])
-        response_packet += struct.pack("<h", a["Data Length"])
+        response_packet += struct.pack(">h", qtype_map_inv[a["Type"]])
+        response_packet += struct.pack(">h", qclass_map_inv[a["Class"]])
+        response_packet += struct.pack(">I", a["TTL"])
+        response_packet += struct.pack(">h", a["Data Length"])
         if a["Type"] == "A":
             for octet in a["Data"].split('.'):
                 response_packet += struct.pack('B', int(octet))
@@ -230,13 +242,14 @@ def send_response(query):
 server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_sock.bind(('', 54))
 
+
+
 while True:
 
     message, address = server_sock.recvfrom(1024)
     r = send_response(message)
     print(parse_response(r))
     server_sock.sendto(r, address) 
-
 
 
 '''
