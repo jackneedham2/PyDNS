@@ -209,15 +209,28 @@ def send_response(query):
     parsedq["Answers"] = []
 
     record = dict()
-    record["Domain"] = parsedq["Question"] # This needs to be the domain pointer. Fixed?
-    record["Type"] = dns_db[parsedq["Question"]]["Type"]
-    record["Class"] = dns_db[parsedq["Question"]]["Class"]
-    record["TTL"] = dns_db[parsedq["Question"]]["TTL"]
-    record["Data Length"] = dns_db[parsedq["Question"]]["Data Length"]
-    record["Data"] = dns_db[parsedq["Question"]]["Data"]
-    parsedq["Answers"] += [record]
-    parsedq["Num Answer RRs"] = 1
-    response_packet = bytes(construct_query_packet(parsedq["Question"], parsedq, parsedq["QType"]))
+
+    if parsedq["Question"] in dns_db:
+        record["Domain"] = parsedq["Question"] # This needs to be the domain pointer. Fixed?
+        record["Type"] = dns_db[parsedq["Question"]]["Type"]
+        record["Class"] = dns_db[parsedq["Question"]]["Class"]
+        record["TTL"] = dns_db[parsedq["Question"]]["TTL"]
+        record["Data Length"] = dns_db[parsedq["Question"]]["Data Length"]
+        record["Data"] = dns_db[parsedq["Question"]]["Data"]
+        parsedq["Answers"] += [record]
+        parsedq["Num Answer RRs"] = 1
+        response_packet = bytes(construct_query_packet(parsedq["Question"], parsedq, parsedq["QType"]))
+
+    else:
+        r = (parse_response(query_domain(parsedq["Question"], "1.1.1.1")))
+        dns_db[parsedq["Question"]] = {
+            "Type": "A",
+            "Class": "IN",
+            "TTL": 300,
+            "Data": r["Answers"][0]["Data"],
+            "Data Length": 4 # 4 octets
+        }
+        return send_response(query)
 
     # add answers in
 
@@ -232,6 +245,8 @@ def send_response(query):
         if a["Type"] == "A":
             for octet in a["Data"].split('.'):
                 response_packet += struct.pack('B', int(octet))
+
+
 
     return response_packet
 
