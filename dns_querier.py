@@ -21,10 +21,10 @@ dns_db = {
     }
 }
 
+# Encoding
 
-
-def format_domain(s):
-    spl = s.split(".")
+def encode_domain(s):
+    spl = s.split(".") # split into an array
     outbytes = []
     for section in spl:
         outbytes += [len(section)]
@@ -33,18 +33,10 @@ def format_domain(s):
     outbytes += [0] # null octet for the root
     return outbytes
 
-def construct_query_packet(d,header,qtype):
-    packet = []
-    packet += construct_header(header)
-    packet += format_domain(d) # add question
-    packet += [0, qtype_map_inv[qtype]] # add QTYPE
-    packet += [0, qclass_map_inv["IN"]] # add QCLASS
-    return packet
-
-def construct_header(h):
-    ch = [] # ch for constructed header
-    tr_id_bytes = h["Transaction ID"].to_bytes(2)
-    ch += [tr_id_bytes[0], tr_id_bytes[1]] # 16 bit ID
+def encode_header(h):
+    ch = bytes() # ch for encodeed header
+    tr_id_bytes = struct.pack(">H", h["Transaction ID"])
+    ch += struct.pack(">H", h["Transaction ID"])
 
     # Create 16 bit flags section
     flags = [0, 0]
@@ -54,12 +46,13 @@ def construct_header(h):
         flags[0] += (1<<7)
     else:
         raise Exception("QR value of "+str(h["Flags"]["QR"])+" is invalid. Must be 'Query' or 'Response'.")
+
     if h["Flags"]["OPCODE"] == "QUERY":
-        flags[0] += (0b0000) << 3
+        flags[0] += 0 << 3
     elif h["Flags"]["OPCODE"] == "IQUERY":
-        flags[0] += (0b0001) << 3
+        flags[0] += 1 << 3
     elif h["Flags"]["OPCODE"] == "STATUS":
-        flags[0] += (0b0010) << 3
+        flags[0] += 2 << 3
     else:
         raise Exception("OPCODE value of "+str(h["Flags"]["OPCODE"])+" is invalid. Must be QUERY, IQUERY or STATUS.")
 
@@ -70,19 +63,20 @@ def construct_header(h):
     flags[1] += (int(h["Flags"]["Z"]) << 6)
     flags[1] += rcode_map_inv[h["Flags"]["RCODE"]]
 
-    ch += flags
+    ch += bytes(flags)
 
     # Number of questions, answers, name servers and additional
-    ch += [0, h["Num Questions"]]
-    ch += [0, h["Num Answer RRs"]]
-    ch += [0, h["Num Authority RRs"]]
-    ch += [0, h["Num Additional RRs"]]
+
+    ch += struct.pack(">H", h["Num Questions"])
+    ch += struct.pack(">H", h["Num Answer RRs"])
+    ch += struct.pack(">H", h["Num Authority RRs"])
+    ch += struct.pack(">H", h["Num Additional RRs"])
 
     return ch
 
-def construct_rr(rr):
+def encode_rr(rr):
     crr = []
-    crr += format_domain(rr["Domain"])
+    crr += encode_domain(rr["Domain"])
     crr += [0, qtype_map_inv[rr["Type"]]]
     crr += [0, qclass_map_inv[rr["Class"]]]
     crr += [0,0,0,rr["TTL"]]
@@ -90,20 +84,18 @@ def construct_rr(rr):
     crr += rr["Data"]
     return crr
 
+def encode_query(d,header,qtype):
+    packet = []
+    packet += encode_header(header)
+    packet += encode_domain(d) # add question
+    packet += [0, qtype_map_inv[qtype]] # add QTYPE
+    packet += [0, qclass_map_inv["IN"]] # add QCLASS
+    return packet
 
-def query_domain(d, ip, qtype="A", header=dict(), port=53):
 
-    h = DEFAULT_QUERY_HEADER
-    for k in header:
-        h[k] = header[k]
+# Decoding
 
-    packet = construct_query_packet(d,h,qtype)
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.sendto(bytes(packet), (ip,port))
-    r = s.recvfrom(1024)
-    return r[0]
-
-def parse_domain(d):
+def decode_domain(d):
     p = d[0]
     i = 1
     outstr = ""
@@ -117,10 +109,10 @@ def parse_domain(d):
         i += 1
     return (i, outstr)
 
-def parse_query(q):
-    parsed_question = parse_domain(q[12:-1])
+def decode_query(q):
+    decoded_question = decode_domain(q[12:-1])
 
-    q_offset = 12+parsed_question[0]+1
+    q_offset = 12+decoded_question[0]+1
 
     resp = {
         "Transaction ID": struct.unpack(">H", q[0:2])[0],
@@ -138,17 +130,17 @@ def parse_query(q):
         "Num Answer RRs": (q[6]<<8)+q[7],
         "Num Authority RRs": (q[8]<<8)+q[9],
         "Num Additional RRs": (q[10]<<8)+q[11],
-        "Question": parsed_question[1],
+        "Question": decoded_question[1],
         "QType": qtype_map[int.from_bytes(q[q_offset:q_offset+2])],
         "QClass": qclass_map[int.from_bytes(q[q_offset+2:q_offset+4])]
     }  
     return resp
 
-def parse_response(r):
-    parsed_question = parse_domain(r[12:-1])
+def decode_response(r):
+    decoded_question = decode_domain(r[12:-1])
 
-    resp = parse_query(r)
-    rr_offset = 12+parsed_question[0]+1+4
+    resp = decode_query(r)
+    rr_offset = 12+decoded_question[0]+1+4
     i = 0
 
     resp["Answers"] = []
@@ -156,16 +148,15 @@ def parse_response(r):
         record = dict()
         if(r[rr_offset] & 192 == 192): # 192 = 0b11000000
             domain_pointer = int.from_bytes([(r[rr_offset] & 63), r[rr_offset+1]])
-            parsed_dom = parse_domain(r[domain_pointer:-1])
-            record["Domain"] = parsed_dom[1]
+            decoded_dom = decode_domain(r[domain_pointer:-1])
+            record["Domain"] = decoded_dom[1]
             rr_offset += 2
 
         else:
-            d = parse_domain(r[rr_offset:-1])
+            d = decode_domain(r[rr_offset:-1])
             record["Domain"] = d[1]
             rr_offset += d[0]+1
 
-        print(r[rr_offset:rr_offset+6])
         record["Type"] = qtype_map[int.from_bytes(r[rr_offset:rr_offset+2])]
         record["Class"] = qclass_map[int.from_bytes(r[rr_offset+2:rr_offset+4])]
         record["TTL"] = int.from_bytes(r[rr_offset+4:rr_offset+8])
@@ -180,13 +171,13 @@ def parse_response(r):
             record["Data"] = outstr
 
         elif record["Type"] in ["CNAME", "MB", "MD", "MF", "MG", "MINFO", "MR", "NSDNAME", "PTR", ]:
-            record["Data"] = parse_domain(data_raw)
+            record["Data"] = decode_domain(data_raw)
 
         elif record["Type"] == "MX":
 
             record["Data"] = { 
                 "Preference": int.from_bytes(data_raw[0:2]), 
-                "Mail Exchange": parse_domain(data_raw[2:-2]+r[data_raw[-1]:-1])
+                "Mail Exchange": decode_domain(data_raw[2:-2]+r[data_raw[-1]:-1])
                 }
 
         elif record["Type"] == "SOA":
@@ -204,71 +195,71 @@ def parse_response(r):
     return resp
 
 
-def send_response(query): 
-    parsedq = parse_query(query)
-    parsedq["Answers"] = []
+# Send + respond
 
-    record = dict()
+def send_query(d, ip, qtype="A", header=dict(), port=53):
 
-    if parsedq["Question"] in dns_db:
-        record["Domain"] = parsedq["Question"] # This needs to be the domain pointer. Fixed?
-        record["Type"] = dns_db[parsedq["Question"]]["Type"]
-        record["Class"] = dns_db[parsedq["Question"]]["Class"]
-        record["TTL"] = dns_db[parsedq["Question"]]["TTL"]
-        record["Data Length"] = dns_db[parsedq["Question"]]["Data Length"]
-        record["Data"] = dns_db[parsedq["Question"]]["Data"]
-        parsedq["Answers"] += [record]
-        parsedq["Num Answer RRs"] = 1
-        response_packet = bytes(construct_query_packet(parsedq["Question"], parsedq, parsedq["QType"]))
+    h = DEFAULT_QUERY_HEADER
+    for k in header:
+        h[k] = header[k]
 
-    else:
-        r = (parse_response(query_domain(parsedq["Question"], "1.1.1.1")))
-        dns_db[parsedq["Question"]] = {
-            "Type": "A",
-            "Class": "IN",
-            "TTL": 300,
-            "Data": r["Answers"][0]["Data"],
-            "Data Length": 4 # 4 octets
-        }
-        return send_response(query)
+    packet = encode_query(d,h,qtype)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.sendto(bytes(packet), (ip,port))
+    r = s.recvfrom(1024)
+    return r[0]
+def send_response(query):
+    try:
+        decodedq = decode_query(query)
+        decodedq["Answers"] = []
 
-    # add answers in
+        record = dict()
 
-    #this is a bad way to  do it
+        if decodedq["Question"] in dns_db:
+            record["Domain"] = decodedq["Question"] # This needs to be the domain pointer. Fixed?
+            record["Type"] = dns_db[decodedq["Question"]]["Type"]
+            record["Class"] = dns_db[decodedq["Question"]]["Class"]
+            record["TTL"] = dns_db[decodedq["Question"]]["TTL"]
+            record["Data Length"] = dns_db[decodedq["Question"]]["Data Length"]
+            record["Data"] = dns_db[decodedq["Question"]]["Data"]
+            decodedq["Answers"] += [record]
+            decodedq["Num Answer RRs"] = 1
+            response_packet = bytes(encode_query(decodedq["Question"], decodedq, decodedq["QType"]))
 
-    for a in parsedq["Answers"]:
-        response_packet += bytes(format_domain(a["Domain"]))
-        response_packet += struct.pack(">h", qtype_map_inv[a["Type"]])
-        response_packet += struct.pack(">h", qclass_map_inv[a["Class"]])
-        response_packet += struct.pack(">I", a["TTL"])
-        response_packet += struct.pack(">h", a["Data Length"])
-        if a["Type"] == "A":
-            for octet in a["Data"].split('.'):
-                response_packet += struct.pack('B', int(octet))
+        else:
+            r = (decode_response(send_query(decodedq["Question"], "1.1.1.1")))
+            dns_db[decodedq["Question"]] = {
+                "Type": "A",
+                "Class": "IN",
+                "TTL": 300,
+                "Data": r["Answers"][0]["Data"],
+                "Data Length": 4 # 4 octets
+            }
+            return send_response(query)
 
+        # add answers in
 
+        #this is a bad way to  do it
 
-    return response_packet
-
-
-
-#print(parse_query(bytes(construct_query_packet("google.com", DEFAULT_QUERY_HEADER, "A"))))
-
-server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server_sock.bind(('', 54))
-
-
-
-while True:
-
-    message, address = server_sock.recvfrom(1024)
-    r = send_response(message)
-    print(parse_response(r))
-    server_sock.sendto(r, address) 
+        for a in decodedq["Answers"]:
+            response_packet += bytes(encode_domain(a["Domain"]))
+            response_packet += struct.pack(">h", qtype_map_inv[a["Type"]])
+            response_packet += struct.pack(">h", qclass_map_inv[a["Class"]])
+            response_packet += struct.pack(">I", a["TTL"])
+            response_packet += struct.pack(">h", a["Data Length"])
+            if a["Type"] == "A":
+                for octet in a["Data"].split('.'):
+                    response_packet += struct.pack('B', int(octet))
 
 
-'''
-myresponse = query_domain("google.com","1.1.1.1")
-pprint.pp(parse_response(myresponse))
 
-'''
+        return response_packet
+    except:
+        return 0
+
+
+
+
+
+myresponse = send_query("google.com","1.1.1.1")
+pprint.pp(decode_response(myresponse))
