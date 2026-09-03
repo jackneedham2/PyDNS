@@ -109,32 +109,35 @@ def decode_domain(d):
         i += 1
     return (i, outstr)
 
+def decode_flags(f):
+    return {
+            "QR": "Query" if (f >> 15 == 0) else "Response",
+            "OPCODE": opcode_map[(f >> 11) & 15],
+            "AA": bool((f >> 10) & 1),
+            "TC": bool((f >> 9) & 1),
+            "RD": bool((f >> 8) & 1),
+            "RA": bool((f >> 7) & 1),
+            "Z": (f >> 4) & 7,
+            "RCODE": rcode_map[f & 15]
+    }
+
 def decode_query(q):
     decoded_question = decode_domain(q[12:-1])
-
     q_offset = 12+decoded_question[0]+1
+    header_struct = struct.Struct("!HHHHHH")
+    header = header_struct.unpack(q[0:12])
 
-    resp = {
-        "Transaction ID": struct.unpack(">H", q[0:2])[0],
-        "Flags": {
-            "QR": "Query" if (q[2] >> 7 == 0) else "Response",
-            "OPCODE": opcode_map[(q[2] & 0b01111000) >> 3],
-            "AA": bool((q[2] & 0b00000100) >> 2),
-            "TC": bool((q[2] & 0b00000010) >> 1),
-            "RD": bool(q[2] & 0b00000001),
-            "RA": bool((q[3] & 0b10000000) >> 7),
-            "Z": (q[3] & 0b01110000) >> 4,
-            "RCODE": rcode_map[q[3] & 0b00001111]
-        },
-        "Num Questions": (q[4]<<8)+q[5],
-        "Num Answer RRs": (q[6]<<8)+q[7],
-        "Num Authority RRs": (q[8]<<8)+q[9],
-        "Num Additional RRs": (q[10]<<8)+q[11],
+    return {
+        "Transaction ID": header[0],
+        "Flags": decode_flags(header[1]),
+        "Num Questions": header[2],
+        "Num Answer RRs": header[3],
+        "Num Authority RRs": header[4],
+        "Num Additional RRs": header[5],
         "Question": decoded_question[1],
-        "QType": qtype_map[int.from_bytes(q[q_offset:q_offset+2])],
-        "QClass": qclass_map[int.from_bytes(q[q_offset+2:q_offset+4])]
-    }  
-    return resp
+        "QType": qtype_map[struct.unpack("!H",q[q_offset:q_offset+2])[0]],
+        "QClass": qclass_map[struct.unpack("!H",q[q_offset+2:q_offset+4])[0]]
+    }
 
 def decode_response(r):
     decoded_question = decode_domain(r[12:-1])
@@ -142,6 +145,25 @@ def decode_response(r):
     resp = decode_query(r)
     rr_offset = 12+decoded_question[0]+1+4
     i = 0
+
+    decoded_query = decode_query(r)
+    records_offset = 18 + len(decoded_query["Question"])
+    records = r[records_offset:-1]
+
+
+    decoded_domain = ""
+
+    if (struct.unpack("!H",records[0:2])[0] >> 14):
+        question_pointer = struct.unpack("!H", records[0:2])[0] ^ (0b11 << 14)
+        decoded_domain = decode_domain(r[question_pointer:question_pointer+len(decoded_query["Question"])+2])
+
+    else:
+        decoded_domain = decode_domain(r[0:-1])
+
+    print(records)
+    print(records[len(decoded_domain):-1])
+
+
 
     resp["Answers"] = []
     while i < resp["Num Answer RRs"]:
@@ -256,8 +278,6 @@ def send_response(query):
         return response_packet
     except:
         return 0
-
-
 
 
 
