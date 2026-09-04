@@ -151,20 +151,40 @@ def decode_response(r):
     records = r[records_offset:-1]
 
 
-    decoded_domain = ""
+    for i in range(resp["Num Answer RRs"]):
 
-    if (struct.unpack("!H",records[0:2])[0] >> 14):
-        question_pointer = struct.unpack("!H", records[0:2])[0] ^ (0b11 << 14)
-        decoded_domain = decode_domain(r[question_pointer:question_pointer+len(decoded_query["Question"])+2])
+        decoded_record = dict()
 
-    else:
-        decoded_domain = decode_domain(r[0:-1])
+        if (struct.unpack("!H",records[0:2])[0] >> 14):
+            question_pointer = struct.unpack("!H", records[0:2])[0] ^ (0b11 << 14)
+            decoded_record["Domain"] = decode_domain(r[question_pointer:question_pointer+len(decoded_query["Question"])+2])[1]
+            records = records[2:-1]
 
-    print(records)
-    print(records[len(decoded_domain):-1])
+        else:
+            decoded_record["Domain"] = decode_domain(r[0:-1])[1]
+            records = records[len(decoded_record["Domain"])+1:-1]
+
+        record_struct = struct.Struct("!HHIH")
+        print(records[0:10])
+        record_unpacked = record_struct.unpack(records[0:10])
+        print(record_unpacked)
+
+        decoded_record["Type"] = qtype_map[record_unpacked[0]]
+        decoded_record["Class"] = qclass_map[record_unpacked[1]]
+        decoded_record["TTL"] = record_unpacked[2]
+        decoded_record["Data Length"] = record_unpacked[3]
+
+        match decoded_record["Type"]:
+            case "A": 
+                a_struct = struct.Struct("!BBBB")
+                decoded_record["Data"] = ".".join([str(x) for x in a_struct.unpack(records[10:10+decoded_record["Data Length"]])])
+            case _:
+                decoded_record["Data"] = records[10:10+decoded_record["Data Length"]]
+
+        records = records[10+decoded_record["Data Length"]:-1]
 
 
-
+        print(decoded_record)
     resp["Answers"] = []
     while i < resp["Num Answer RRs"]:
         record = dict()
