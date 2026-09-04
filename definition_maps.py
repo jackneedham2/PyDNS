@@ -42,7 +42,7 @@ qclass_map = {
     4: "HS",
     255: "*"
 }
-
+opcode_map_inv = {v: k for k, v in opcode_map.items()}
 qtype_map_inv = {v: k for k, v in qtype_map.items()}
 qclass_map_inv = {v: k for k, v in qclass_map.items()}
 rcode_map_inv = {v: k for k, v in rcode_map.items()}

@@ -1,6 +1,6 @@
 def print_binary(hex_val):
     out_str = ""
-    check = 128
+    check = 256
     while check >= 1:
         if (hex_val & int(check)): 
             out_str += "1"

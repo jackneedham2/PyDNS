@@ -33,12 +33,27 @@ def encode_domain(s):
     outbytes += [0] # null octet for the root
     return outbytes
 
+'''
+    {
+            "QR": "Query" if (f >> 15 == 0) else "Response",
+            "OPCODE": opcode_map[(f >> 11) & 15],
+            "AA": bool((f >> 10) & 1),
+            "TC": bool((f >> 9) & 1),
+            "RD": bool((f >> 8) & 1),
+            "RA": bool((f >> 7) & 1),
+            "Z": (f >> 4) & 7,
+            "RCODE": rcode_map[f & 15]
+    }
+'''
+
+
+
 def encode_header(h):
-    ch = bytes() # ch for encodeed header
-    tr_id_bytes = struct.pack(">H", h["Transaction ID"])
-    ch += struct.pack(">H", h["Transaction ID"])
+
+    ch = struct.pack(">H", h["Transaction ID"])
 
     # Create 16 bit flags section
+
     flags = [0, 0]
     if h["Flags"]["QR"] == "Query":
         flags[0] += (0<<8)
@@ -110,6 +125,7 @@ def decode_domain(d):
     return (i, outstr)
 
 def decode_flags(f):
+    print(f)
     return {
             "QR": "Query" if (f >> 15 == 0) else "Response",
             "OPCODE": opcode_map[(f >> 11) & 15],
@@ -122,7 +138,7 @@ def decode_flags(f):
     }
 
 def decode_query(q):
-    decoded_question = decode_domain(q[12:-1])
+    decoded_question = decode_domain(q[12:])
     q_offset = 12+decoded_question[0]+1
     header_struct = struct.Struct("!HHHHHH")
     header = header_struct.unpack(q[0:12])
@@ -140,34 +156,30 @@ def decode_query(q):
     }
 
 def decode_response(r):
-    decoded_question = decode_domain(r[12:-1])
 
-    resp = decode_query(r)
-    rr_offset = 12+decoded_question[0]+1+4
-    i = 0
-
+    # Decode header + query
     decoded_query = decode_query(r)
     records_offset = 18 + len(decoded_query["Question"])
-    records = r[records_offset:-1]
+    records = r[records_offset:]
+    decoded_query["Answers"] = []
 
 
-    for i in range(resp["Num Answer RRs"]):
+    # Decode answer resource records    
+    for answer in range(decoded_query["Num Answer RRs"]):
 
         decoded_record = dict()
 
         if (struct.unpack("!H",records[0:2])[0] >> 14):
             question_pointer = struct.unpack("!H", records[0:2])[0] ^ (0b11 << 14)
             decoded_record["Domain"] = decode_domain(r[question_pointer:question_pointer+len(decoded_query["Question"])+2])[1]
-            records = records[2:-1]
+            records = records[2:]
 
         else:
             decoded_record["Domain"] = decode_domain(r[0:-1])[1]
-            records = records[len(decoded_record["Domain"])+1:-1]
+            records = records[len(decoded_record["Domain"])+1:]
 
         record_struct = struct.Struct("!HHIH")
-        print(records[0:10])
         record_unpacked = record_struct.unpack(records[0:10])
-        print(record_unpacked)
 
         decoded_record["Type"] = qtype_map[record_unpacked[0]]
         decoded_record["Class"] = qclass_map[record_unpacked[1]]
@@ -175,66 +187,17 @@ def decode_response(r):
         decoded_record["Data Length"] = record_unpacked[3]
 
         match decoded_record["Type"]:
-            case "A": 
+            case "A" | "CNAME"| "MB"| "MD"| "MF"| "MG"| "MINFO"| "MR"| "NSDNAME"| "PTR": 
                 a_struct = struct.Struct("!BBBB")
                 decoded_record["Data"] = ".".join([str(x) for x in a_struct.unpack(records[10:10+decoded_record["Data Length"]])])
             case _:
                 decoded_record["Data"] = records[10:10+decoded_record["Data Length"]]
 
-        records = records[10+decoded_record["Data Length"]:-1]
+        records = records[10+decoded_record["Data Length"]:]
+        decoded_query["Answers"] += [decoded_record]
 
 
-        print(decoded_record)
-    resp["Answers"] = []
-    while i < resp["Num Answer RRs"]:
-        record = dict()
-        if(r[rr_offset] & 192 == 192): # 192 = 0b11000000
-            domain_pointer = int.from_bytes([(r[rr_offset] & 63), r[rr_offset+1]])
-            decoded_dom = decode_domain(r[domain_pointer:-1])
-            record["Domain"] = decoded_dom[1]
-            rr_offset += 2
-
-        else:
-            d = decode_domain(r[rr_offset:-1])
-            record["Domain"] = d[1]
-            rr_offset += d[0]+1
-
-        record["Type"] = qtype_map[int.from_bytes(r[rr_offset:rr_offset+2])]
-        record["Class"] = qclass_map[int.from_bytes(r[rr_offset+2:rr_offset+4])]
-        record["TTL"] = int.from_bytes(r[rr_offset+4:rr_offset+8])
-        record["Data Length"] = int.from_bytes(r[rr_offset+8:rr_offset+10])
-        data_raw = r[rr_offset+10:rr_offset+10+record["Data Length"]]
-        if record["Type"] in ["A"]:
-            outstr = ""
-            for b in data_raw[0:-1]:
-                outstr += str(b)
-                outstr += "."
-            outstr += str(data_raw[-1])
-            record["Data"] = outstr
-
-        elif record["Type"] in ["CNAME", "MB", "MD", "MF", "MG", "MINFO", "MR", "NSDNAME", "PTR", ]:
-            record["Data"] = decode_domain(data_raw)
-
-        elif record["Type"] == "MX":
-
-            record["Data"] = { 
-                "Preference": int.from_bytes(data_raw[0:2]), 
-                "Mail Exchange": decode_domain(data_raw[2:-2]+r[data_raw[-1]:-1])
-                }
-
-        elif record["Type"] == "SOA":
-            record["Data"] = data_raw # todo: implement parsing
-
-        elif record["Type"] == "WKS":
-            record["Data"] = data_raw # todo: implement parsing
-
-        else:
-            record["Data"] = data_raw
-        rr_offset = rr_offset+10+record["Data Length"]
-        resp["Answers"] += [record]
-        i += 1
-
-    return resp
+    return decoded_query
 
 
 # Send + respond
@@ -250,6 +213,8 @@ def send_query(d, ip, qtype="A", header=dict(), port=53):
     s.sendto(bytes(packet), (ip,port))
     r = s.recvfrom(1024)
     return r[0]
+
+
 def send_response(query):
     try:
         decodedq = decode_query(query)
@@ -300,6 +265,35 @@ def send_response(query):
         return 0
 
 
+def encode_flags(f):
+    encoded = int()
 
-myresponse = send_query("google.com","1.1.1.1")
-pprint.pp(decode_response(myresponse))
+    encoded += (1 << 15) if f["QR"] == "Response" else 0
+    encoded += (opcode_map_inv[f["OPCODE"]] << 11)
+    encoded += (int(f["AA"]) << 10)
+    encoded += (int(f["TC"]) << 9)
+    encoded += (int(f["RD"]) << 8)
+    encoded += (int(f["RA"]) << 7)
+    encoded += (f["Z"] << 4)
+    encoded += rcode_map_inv[f["RCODE"]]
+
+    return encoded
+
+
+test_flags_decoded = {'QR': 'Response',
+           'OPCODE': 'QUERY',
+           'AA': True,
+           'TC': True,
+           'RD': True,
+           'RA': False,
+           'Z': 1,
+           'RCODE': 'Format Error'}
+
+test_flags_encoded = 33152
+
+print(decode_flags(encode_flags(test_flags_decoded)))
+
+
+#myresponse = send_query("google.com","1.1.1.1")
+
+#pprint.pp(decode_response(myresponse))
