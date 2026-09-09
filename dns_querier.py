@@ -42,16 +42,6 @@ def encode_header(h):
 
     return ch
 
-def encode_rr(rr):
-    crr = []
-    crr += encode_domain(rr["Domain"])
-    crr += [0, qtype_map_inv[rr["Type"]]]
-    crr += [0, qclass_map_inv[rr["Class"]]]
-    crr += [0,0,0,rr["TTL"]]
-    crr += [0, rr["Data Length"]]
-    crr += rr["Data"]
-    return crr
-
 def encode_query(d,header,qtype):
     packet = bytes()
     packet += encode_header(header)
@@ -59,8 +49,6 @@ def encode_query(d,header,qtype):
     packet += struct.pack("!H", qtype_map_inv[qtype]) # add QTYPE
     packet += struct.pack("!H", qclass_map_inv["IN"]) # add QCLASS
     return packet
-
-
 
 # Decoding
 
