@@ -47,11 +47,6 @@ qtype_map_inv = {v: k for k, v in qtype_map.items()}
 qclass_map_inv = {v: k for k, v in qclass_map.items()}
 rcode_map_inv = {v: k for k, v in rcode_map.items()}
 
-type_formats_map = {
-    "domain": ["CNAME","MB","MD","MF", "MG", "MINFO","MR"],
-    "other": ["HINFO"]
-}
-
 
 DEFAULT_QUERY_HEADER = {
     "Transaction ID":0x2222,
@@ -70,5 +65,6 @@ DEFAULT_QUERY_HEADER = {
     "Num Authority RRs": 0,
     "Num Additional RRs": 0
 }
-SAMPLE_QUERY_BYTES  = bytes([0x22, 0x22, 0x1, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x6, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x3, 0x63, 0x6f, 0x6d, 0x0, 0x0, 0x1, 0x0, 0x1])
-SAMPLE_QUERY_BYTES1  = SAMPLE_QUERY_BYTES[0:12]
+
+supported_qtypes = ["A", "CNAME", "MB", "MD", "MF", "MG", "MINFO", "MR", "NSDNAME", "PTR"]
+
