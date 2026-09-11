@@ -1,3 +1,7 @@
+"""
+Some straightforward unit tests to make sure the encoding and decoding logic is behaving as expected
+"""
+
 import unittest
 import dns_querier
 import definition_maps as dm

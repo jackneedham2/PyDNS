@@ -1,3 +1,8 @@
+"""
+This is where all the DNS packet encoding and decoding logic happens,
+as well as a function to send a DNS request.
+"""
+
 import socket
 import pprint
 import definition_maps as dm

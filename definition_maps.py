@@ -1,5 +1,8 @@
-# These definitions all taken from rfc1035
-
+"""
+These are taken from RFC 1035. They map strings onto numbers for various parameters in the DNS packets.
+Each one has an inverse map as well, this is created automatically.
+I've also put a default header in here at the bottom.
+"""
 opcode_map = {
     0:"QUERY", 
     1:"IQUERY", 
