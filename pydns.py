@@ -1,3 +1,8 @@
+"""
+This is a very basic CLI for the DNS querier
+It prints A records nicely, otherwise it just gives you the dict printed with pprint.
+"""
+
 import click
 import dns_querier as querier
 import pprint
